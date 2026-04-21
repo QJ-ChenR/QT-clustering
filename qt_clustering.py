@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import argparse
+import sys
 import math
 
 
@@ -181,24 +181,47 @@ def _format_point(point: Iterable[float]) -> str:
     return " ".join(f"{value:g}" for value in point)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run deterministic QT clustering")
-    parser.add_argument("input_file", help="Path to a data file containing points")
-    parser.add_argument(
-        "threshold",
-        type=float,
-        help="Maximum cluster diameter (Euclidean distance)",
-    )
-    args = parser.parse_args()
 
-    points = load_points(args.input_file)
-    clusterer = QTClusterer(args.threshold)
+
+def main():
+    # 1. parse arguments
+    if len(sys.argv) != 3:
+        print("Usage: python cluster.py <input_file> <threshold>")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+    threshold_arg = sys.argv[2]
+
+    # 2. load data
+    points = load_points(input_file)
+
+    # 3. compute distance matrix
+    temp_clusterer = QTClusterer(0)
+    distances = temp_clusterer._distance_matrix(points)
+
+    # 4. process threshold
+    if threshold_arg.endswith("%"):
+        percent = float(threshold_arg[:-1]) / 100
+
+        max_dist = 0.0
+        for i in range(len(distances)):
+            for j in range(len(distances)):
+                if distances[i][j] > max_dist:
+                    max_dist = distances[i][j]
+
+        threshold = percent * max_dist
+    else:
+        threshold = float(threshold_arg)
+
+    # 5. clustering
+    clusterer = QTClusterer(threshold)
     clusters = clusterer.fit(points)
 
+    # 6. output
     for idx, cluster in enumerate(clusters, start=1):
-        print(f"Cluster {idx} (size={len(cluster)}):")
+        print(f"Cluster-{idx}")
         for point_idx in cluster:
-            print(f"  #{point_idx}: {_format_point(points[point_idx])}")
+            print(_format_point(points[point_idx]))
 
 
 if __name__ == "__main__":
