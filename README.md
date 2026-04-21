@@ -29,8 +29,3 @@ points = load_points("data.txt")
 clusters = QTClusterer(threshold=1.0).fit(points)
 ```
 
-3. **最后替换文件读写封装**：如 `pathlib` 改成 `open(...).readlines()`，确保只使用课程允许的基础 I/O。
-4. **每做一步就跑测试**：保证行为不变，再进行下一步。
-5. **保留接口不变**：优先保证 `QTClusterer.fit`、`fit_predict`、`load_points` 的调用方式稳定，这样改造后测试更容易通过。
-
-推荐你每次提交只做一类改动（例如“仅替换距离函数”），便于回滚和答辩说明。
