@@ -29,6 +29,11 @@ class QTClusterer:
             best_diameter = math.inf
 
             for seed in sorted(unassigned):
+                if best_cluster is not None:
+                    max_possible_size = self._seed_upper_bound(seed, unassigned, distances)
+                    if max_possible_size < len(best_cluster):
+                        continue
+
                 candidate, diameter = self._build_cluster(seed, unassigned, distances)
                 if best_cluster is None:
                     best_cluster = candidate
@@ -71,23 +76,21 @@ class QTClusterer:
         distances: list[list[float]],
     ) -> tuple[list[int], float]:
         cluster = [seed]
-        cluster_set = {seed}
         diameter = 0.0
+        candidate_max_dist: dict[int, float] = {}
+
+        for idx in available:
+            if idx == seed:
+                continue
+            dist_to_seed = distances[idx][seed]
+            if dist_to_seed <= self.threshold:
+                candidate_max_dist[idx] = dist_to_seed
 
         while True:
             best_next = None
             best_new_diameter = math.inf
 
-            for idx in sorted(available):
-                if idx in cluster_set:
-                    continue
-
-                new_diameter = diameter
-                for existing in cluster:
-                    new_diameter = max(new_diameter, distances[idx][existing])
-                    if new_diameter > self.threshold:
-                        break
-
+            for idx, new_diameter in candidate_max_dist.items():
                 if new_diameter > self.threshold:
                     continue
 
@@ -101,11 +104,34 @@ class QTClusterer:
                 break
 
             cluster.append(best_next)
-            cluster_set.add(best_next)
             diameter = best_new_diameter
+            del candidate_max_dist[best_next]
+
+            to_remove = []
+            for idx, current_max_dist in candidate_max_dist.items():
+                new_max_dist = max(current_max_dist, distances[idx][best_next])
+                if new_max_dist > self.threshold:
+                    to_remove.append(idx)
+                else:
+                    candidate_max_dist[idx] = new_max_dist
+
+            for idx in to_remove:
+                del candidate_max_dist[idx]
 
         cluster.sort()
         return cluster, diameter
+
+    def _seed_upper_bound(
+        self,
+        seed: int,
+        available: set[int],
+        distances: list[list[float]],
+    ) -> int:
+        count = 0
+        for idx in available:
+            if distances[seed][idx] <= self.threshold:
+                count += 1
+        return count
 
     @staticmethod
     def _distance_matrix(points: list[Point]) -> list[list[float]]:
@@ -200,10 +226,10 @@ def main():
         percent = float(threshold_arg[:-1]) / 100
 
         max_dist = 0.0
-        for i in range(len(distances)):
-            for j in range(len(distances)):
-                if distances[i][j] > max_dist:
-                    max_dist = distances[i][j]
+        for row in distances:
+            row_max = max(row)
+            if row_max > max_dist:
+                max_dist = row_max
 
         threshold = percent * max_dist
     else:
