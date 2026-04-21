@@ -22,7 +22,7 @@ def load_dataset(filename):
 def test_all_points_assigned(filename):
     labels, points = load_dataset(filename)
 
-    clusterer = QTClusterer(threshold=50)
+    clusterer = QTClusterer(threshold=30)
     clusters = clusterer.fit(points)
 
     assigned = sorted(idx for cluster in clusters for idx in cluster)
@@ -33,7 +33,7 @@ def test_all_points_assigned(filename):
 def test_no_duplicate_assignment():
     labels, points = load_dataset("point100.lst")
 
-    clusterer = QTClusterer(threshold=50)
+    clusterer = QTClusterer(threshold=30)
     clusters = clusterer.fit(points)
 
     seen = set()
@@ -46,7 +46,7 @@ def test_no_duplicate_assignment():
 def test_deterministic():
     labels, points = load_dataset("point100.lst")
 
-    clusterer = QTClusterer(threshold=50)
+    clusterer = QTClusterer(threshold=30)
 
     c1 = clusterer.fit(points)
     c2 = clusterer.fit(points)
