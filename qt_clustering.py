@@ -6,7 +6,7 @@ import argparse
 import math
 
 
-Point = Tuple[float, ...]
+Point = tuple[float, ...]
 
 
 class QTClusterer:
@@ -17,17 +17,17 @@ class QTClusterer:
         if threshold < 0:
             raise ValueError("threshold must be non-negative")
 
-    def fit(self, points: Sequence[Point]) -> List[List[int]]:
+    def fit(self, points: Sequence[Point]) -> list[list[int]]:
         if not points:
             return []
 
         self._validate_dimensions(points)
         distances = self._distance_matrix(points)
         unassigned = set(range(len(points)))
-        clusters: List[List[int]] = []
+        clusters: list[list[int]] = []
 
         while unassigned:
-            best_cluster: List[int] | None = None
+            best_cluster: list[int] | None = None
             best_diameter = math.inf
 
             for seed in sorted(unassigned):
@@ -54,7 +54,7 @@ class QTClusterer:
 
         return clusters
 
-    def fit_predict(self, points: Sequence[Point]) -> List[int]:
+    def fit_predict(self, points: Sequence[Point]) -> list[int]:
         clusters = self.fit(points)
         labels = [-1] * len(points)
         for cluster_id, cluster in enumerate(clusters):
@@ -62,7 +62,7 @@ class QTClusterer:
                 labels[point_idx] = cluster_id
         return labels
 
-    def cluster_points(self, points: Sequence[Point]) -> List[List[Point]]:
+    def cluster_points(self, points: Sequence[Point]) -> list[list[Point]]:
         clusters = self.fit(points)
         return [[points[idx] for idx in cluster] for cluster in clusters]
 
@@ -71,7 +71,7 @@ class QTClusterer:
         seed: int,
         available: set[int],
         distances: Sequence[Sequence[float]],
-    ) -> Tuple[List[int], float]:
+    ) -> tuple[list[int], float]:
         cluster = [seed]
         cluster_set = {seed}
         diameter = 0.0
@@ -110,7 +110,7 @@ class QTClusterer:
         return cluster, diameter
 
     @staticmethod
-    def _distance_matrix(points: Sequence[Point]) -> List[List[float]]:
+    def _distance_matrix(points: Sequence[Point]) -> list[list[float]]:
         size = len(points)
         distances = [[0.0] * size for _ in range(size)]
         for i in range(size):
@@ -133,7 +133,7 @@ class QTClusterer:
                 )
 
 
-def load_points(path: str) -> List[Point]:
+def load_points(path: str) -> list[Point]:
     with open(path, "r", encoding="utf-8") as fp:
         lines = [line.strip() for line in fp.readlines()]
     lines = [line for line in lines if line]
