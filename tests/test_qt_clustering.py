@@ -2,6 +2,10 @@ import os
 import tempfile
 import unittest
 
+import sys
+sys.path.append('..')  # Add the parent directory to the path to import qt_clustering
+
+
 from qt_clustering import QTClusterer, load_points
 
 
