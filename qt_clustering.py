@@ -4,22 +4,18 @@ from __future__ import annotations
 
 import argparse
 import math
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
 
 Point = Tuple[float, ...]
 
 
-@dataclass
 class QTClusterer:
     """Deterministic QT clustering with a fixed maximum cluster diameter."""
 
-    threshold: float
-
-    def __post_init__(self) -> None:
-        if self.threshold < 0:
+    def __init__(self, threshold: float) -> None:
+        self.threshold = threshold
+        if threshold < 0:
             raise ValueError("threshold must be non-negative")
 
     def fit(self, points: Sequence[Point]) -> List[List[int]]:
@@ -120,7 +116,7 @@ class QTClusterer:
         distances = [[0.0] * size for _ in range(size)]
         for i in range(size):
             for j in range(i + 1, size):
-                dist = math.dist(points[i], points[j])
+                dist = _euclidean_distance(points[i], points[j])
                 distances[i][j] = dist
                 distances[j][i] = dist
         return distances
@@ -138,8 +134,9 @@ class QTClusterer:
                 )
 
 
-def load_points(path: str | Path) -> List[Point]:
-    lines = [line.strip() for line in Path(path).read_text(encoding="utf-8").splitlines()]
+def load_points(path: str) -> List[Point]:
+    with open(path, "r", encoding="utf-8") as fp:
+        lines = [line.strip() for line in fp.readlines()]
     lines = [line for line in lines if line]
     if not lines:
         return []
@@ -171,6 +168,14 @@ def _parse_point(line: str) -> Point:
         raise ValueError("point rows cannot be empty")
 
     return tuple(float(value) for value in pieces)
+
+
+def _euclidean_distance(a: Point, b: Point) -> float:
+    total = 0.0
+    for idx in range(len(a)):
+        diff = a[idx] - b[idx]
+        total += diff * diff
+    return math.sqrt(total)
 
 
 def _format_point(point: Iterable[float]) -> str:
