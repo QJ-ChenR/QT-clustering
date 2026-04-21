@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import math
-from typing import Iterable, List, Sequence, Tuple
 
 
 Point = Tuple[float, ...]
