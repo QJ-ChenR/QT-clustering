@@ -17,7 +17,7 @@ class QTClusterer:
         if threshold < 0:
             raise ValueError("threshold must be non-negative")
 
-    def fit(self, points: Sequence[Point]) -> list[list[int]]:
+    def fit(self, points: list[Point]) -> list[list[int]]:
         if not points:
             return []
 
@@ -54,7 +54,7 @@ class QTClusterer:
 
         return clusters
 
-    def fit_predict(self, points: Sequence[Point]) -> list[int]:
+    def fit_predict(self, points: list[Point]) -> list[int]:
         clusters = self.fit(points)
         labels = [-1] * len(points)
         for cluster_id, cluster in enumerate(clusters):
@@ -62,7 +62,7 @@ class QTClusterer:
                 labels[point_idx] = cluster_id
         return labels
 
-    def cluster_points(self, points: Sequence[Point]) -> list[list[Point]]:
+    def cluster_points(self, points: list[Point]) -> list[list[Point]]:
         clusters = self.fit(points)
         return [[points[idx] for idx in cluster] for cluster in clusters]
 
@@ -70,7 +70,7 @@ class QTClusterer:
         self,
         seed: int,
         available: set[int],
-        distances: Sequence[Sequence[float]],
+        distances: list[list[float]],
     ) -> tuple[list[int], float]:
         cluster = [seed]
         cluster_set = {seed}
@@ -110,7 +110,7 @@ class QTClusterer:
         return cluster, diameter
 
     @staticmethod
-    def _distance_matrix(points: Sequence[Point]) -> list[list[float]]:
+    def _distance_matrix(points: list[Point]) -> list[list[float]]:
         size = len(points)
         distances = [[0.0] * size for _ in range(size)]
         for i in range(size):
@@ -121,7 +121,7 @@ class QTClusterer:
         return distances
 
     @staticmethod
-    def _validate_dimensions(points: Sequence[Point]) -> None:
+    def _validate_dimensions(points: list[Point]) -> None:
         dims = len(points[0])
         if dims == 0:
             raise ValueError("points must have at least one dimension")
