@@ -1,7 +1,5 @@
 """QT (Quality Threshold) clustering for multi-dimensional data points."""
 
-from __future__ import annotations
-
 import sys
 import math
 
@@ -133,7 +131,7 @@ class QTClusterer:
                 )
 
 
-def load_points(path: str) -> list[Point]:
+def load_points(path: str) -> list[tuple[str, Point]]:
     with open(path, "r", encoding="utf-8") as fp:
         lines = [line.strip() for line in fp.readlines()]
     lines = [line for line in lines if line]
@@ -157,16 +155,11 @@ def load_points(path: str) -> list[Point]:
     return points
 
 
-def _parse_point(line: str) -> Point:
-    if "," in line:
-        pieces = [piece.strip() for piece in line.split(",")]
-    else:
-        pieces = line.split()
-
-    if not pieces:
-        raise ValueError("point rows cannot be empty")
-
-    return tuple(float(value) for value in pieces)
+def _parse_point(line: str):
+    pieces = line.split()
+    label = pieces[0]
+    coords = tuple(float(x) for x in pieces[1:])
+    return label, coords
 
 
 def _euclidean_distance(a: Point, b: Point) -> float:
@@ -177,7 +170,7 @@ def _euclidean_distance(a: Point, b: Point) -> float:
     return math.sqrt(total)
 
 
-def _format_point(point: Iterable[float]) -> str:
+def _format_point(point) -> str:
     return " ".join(f"{value:g}" for value in point)
 
 
@@ -193,7 +186,10 @@ def main():
     threshold_arg = sys.argv[2]
 
     # 2. load data
-    points = load_points(input_file)
+    data = load_points(input_file)
+    
+    labels = [label for label, _ in data]
+    points = [coords for _, coords in data]
 
     # 3. compute distance matrix
     temp_clusterer = QTClusterer(0)
@@ -221,7 +217,9 @@ def main():
     for idx, cluster in enumerate(clusters, start=1):
         print(f"Cluster-{idx}")
         for point_idx in cluster:
-            print(_format_point(points[point_idx]))
+            label = labels[point_idx]
+            point = points[point_idx]
+            print(f"{label} {_format_point(point)}")
 
 
 if __name__ == "__main__":
