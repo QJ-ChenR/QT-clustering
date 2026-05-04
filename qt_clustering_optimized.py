@@ -1,226 +1,272 @@
-"""QT (Quality Threshold) clustering for multi-dimensional data points."""
-
-import sys
+#!/usr/bin/env python3
 import math
+import sys
+import os
 
 
-Point = tuple[float, ...]
+class QTClustering:
+    """
+    Correct Quality Threshold Clustering
+    """
 
-
-class QTClusterer:
-    """Deterministic QT clustering with a fixed maximum cluster diameter."""
-
-    def __init__(self, threshold: float) -> None:
+    def __init__(self, points, threshold):
+        self.points = points
         self.threshold = threshold
-        if threshold < 0:
-            raise ValueError("threshold must be non-negative")
+        self.n = len(points)
 
-    def fit(self, points: list[Point]) -> list[list[int]]:
-        if not points:
-            return []
+        self.dist_matrix = self._compute_distance_matrix()
+        self.neighbors = self._build_neighbor_matrix()
 
-        self._validate_dimensions(points)
-        distances = self._distance_matrix(points)
-        unassigned = set(range(len(points)))
-        clusters: list[list[int]] = []
+        # Track unclustered points
+        self.active = [True] * self.n
 
-        while unassigned:
-            best_cluster: list[int] | None = None
-            best_diameter = math.inf
+    # --------------------------------------------------
+    # Distance Functions
+    # --------------------------------------------------
 
-            for seed in sorted(unassigned):
-                candidate, diameter = self._build_cluster(seed, unassigned, distances)
-                if best_cluster is None:
-                    best_cluster = candidate
-                    best_diameter = diameter
+    def _euclidean_distance(self, p1, p2):
+        return math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
+
+    def _compute_distance_matrix(self):
+        matrix = [[0.0] * self.n for _ in range(self.n)]
+
+        for i in range(self.n):
+            for j in range(i + 1, self.n):
+                d = self._euclidean_distance(self.points[i], self.points[j])
+                matrix[i][j] = d
+                matrix[j][i] = d
+
+        return matrix
+
+    # --------------------------------------------------
+    # Neighbor Matrix
+    # --------------------------------------------------
+
+    def _build_neighbor_matrix(self):
+        neighbors = []
+
+        for i in range(self.n):
+            row = set()
+
+            for j in range(self.n):
+                if i != j and self.dist_matrix[i][j] <= self.threshold:
+                    row.add(j)
+
+            neighbors.append(row)
+
+        return neighbors
+
+    # --------------------------------------------------
+    # Cluster Utilities
+    # --------------------------------------------------
+
+    def cluster_diameter(self, cluster):
+        max_d = 0.0
+
+        for i in range(len(cluster)):
+            for j in range(i + 1, len(cluster)):
+                d = self.dist_matrix[cluster[i]][cluster[j]]
+                if d > max_d:
+                    max_d = d
+
+        return max_d
+
+    # --------------------------------------------------
+    # Candidate Cluster Construction
+    # --------------------------------------------------
+
+    def build_candidate_cluster(self, seed):
+        """
+        Standard QT candidate construction:
+        - Start from seed
+        - Iteratively add point preserving full clique
+        - Greedy choose point maximizing future candidate set
+        """
+
+        cluster = [seed]
+
+        candidates = {
+            p for p in self.neighbors[seed]
+            if self.active[p]
+        }
+
+        while candidates:
+
+            best_point = None
+            best_future_candidates = set()
+
+            for p in candidates:
+
+                # Remaining candidates after adding p
+                future_candidates = {
+                    q for q in candidates
+                    if q != p
+                    and self.active[q]
+                    and self.dist_matrix[p][q] <= self.threshold
+                }
+
+                # Choose candidate preserving largest future set
+                if len(future_candidates) > len(best_future_candidates):
+                    best_point = p
+                    best_future_candidates = future_candidates
+
+            if best_point is None:
+                break
+
+            # Add best point
+            cluster.append(best_point)
+
+            # Shrink candidates
+            candidates = {
+                q for q in best_future_candidates
+                if all(
+                    self.dist_matrix[q][member] <= self.threshold
+                    for member in cluster
+                )
+            }
+
+        return cluster
+
+    # --------------------------------------------------
+    # Main QT Clustering
+    # --------------------------------------------------
+
+    def fit(self):
+        clusters = []
+
+        remaining_points = sum(self.active)
+
+        while remaining_points > 0:
+
+            best_cluster = None
+            best_size = 0
+            best_diameter = float("inf")
+
+            for seed in range(self.n):
+
+                if not self.active[seed]:
                     continue
 
-                if len(candidate) > len(best_cluster):
-                    best_cluster = candidate
-                    best_diameter = diameter
-                elif len(candidate) == len(best_cluster):
-                    if diameter < best_diameter:
-                        best_cluster = candidate
-                        best_diameter = diameter
-                    elif math.isclose(diameter, best_diameter) and candidate < best_cluster:
-                        best_cluster = candidate
-                        best_diameter = diameter
+                # Count only active neighbors
+                active_neighbors = sum(
+                    1 for p in self.neighbors[seed]
+                    if self.active[p]
+                )
 
-            assert best_cluster is not None
+                # Seed pruning
+                if active_neighbors + 1 < best_size:
+                    continue
+
+                candidate = self.build_candidate_cluster(seed)
+
+                candidate_size = len(candidate)
+                candidate_diameter = self.cluster_diameter(candidate)
+
+                # Standard QT tie-breaking
+                if (
+                    candidate_size > best_size
+                    or (
+                        candidate_size == best_size
+                        and candidate_diameter < best_diameter
+                    )
+                ):
+                    best_cluster = candidate
+                    best_size = candidate_size
+                    best_diameter = candidate_diameter
+
+            # Safety fallback
+            if best_cluster is None:
+                break
+
             clusters.append(best_cluster)
-            unassigned.difference_update(best_cluster)
+
+            # Deactivate clustered points
+            for idx in best_cluster:
+                if self.active[idx]:
+                    self.active[idx] = False
+                    remaining_points -= 1
 
         return clusters
 
-    def fit_predict(self, points: list[Point]) -> list[int]:
-        clusters = self.fit(points)
-        labels = [-1] * len(points)
-        for cluster_id, cluster in enumerate(clusters):
-            for point_idx in cluster:
-                labels[point_idx] = cluster_id
-        return labels
 
-    def cluster_points(self, points: list[Point]) -> list[list[Point]]:
-        clusters = self.fit(points)
-        return [[points[idx] for idx in cluster] for cluster in clusters]
+# --------------------------------------------------
+# File Utilities
+# --------------------------------------------------
 
-    def _build_cluster(
-        self,
-        seed: int,
-        available: set[int],
-        distances: list[list[float]],
-    ) -> tuple[list[int], float]:
-        cluster = [seed]
-        cluster_set = {seed}
-        diameter = 0.0
+def load_points_from_file(filename):
+    points = []
+    labels = []
 
-        while True:
-            best_next = None
-            best_new_diameter = math.inf
+    with open(filename, "r") as f:
+        for line in f:
+            line = line.strip()
 
-            for idx in sorted(available):
-                if idx in cluster_set:
-                    continue
+            if not line:
+                continue
 
-                new_diameter = diameter
-                for existing in cluster:
-                    new_diameter = max(new_diameter, distances[idx][existing])
-                    if new_diameter > self.threshold:
-                        break
+            cols = line.split()
 
-                if new_diameter > self.threshold:
-                    continue
+            labels.append(cols[0])
+            points.append(tuple(float(x) for x in cols[1:]))
 
-                if best_next is None or new_diameter < best_new_diameter or (
-                    math.isclose(new_diameter, best_new_diameter) and idx < best_next
-                ):
-                    best_next = idx
-                    best_new_diameter = new_diameter
+    return points, labels
 
-            if best_next is None:
-                break
 
-            cluster.append(best_next)
-            cluster_set.add(best_next)
-            diameter = best_new_diameter
+def compute_max_distance(points):
+    max_dist = 0.0
+    n = len(points)
 
-        cluster.sort()
-        return cluster, diameter
-
-    @staticmethod
-    def _distance_matrix(points: list[Point]) -> list[list[float]]:
-        size = len(points)
-        distances = [[0.0] * size for _ in range(size)]
-        for i in range(size):
-            for j in range(i + 1, size):
-                dist = _euclidean_distance(points[i], points[j])
-                distances[i][j] = dist
-                distances[j][i] = dist
-        return distances
-
-    @staticmethod
-    def _validate_dimensions(points: list[Point]) -> None:
-        dims = len(points[0])
-        if dims == 0:
-            raise ValueError("points must have at least one dimension")
-        for idx, point in enumerate(points):
-            if len(point) != dims:
-                raise ValueError(
-                    f"inconsistent point dimensions: point 0 has {dims}, "
-                    f"point {idx} has {len(point)}"
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = math.sqrt(
+                sum(
+                    (points[i][k] - points[j][k]) ** 2
+                    for k in range(len(points[i]))
                 )
+            )
+
+            if d > max_dist:
+                max_dist = d
+
+    return max_dist
 
 
-def load_points(path: str) -> list[tuple[str, Point]]:
-    with open(path, "r", encoding="utf-8") as fp:
-        lines = [line.strip() for line in fp.readlines()]
-    lines = [line for line in lines if line]
-    if not lines:
-        return []
+# --------------------------------------------------
+# Main
+# --------------------------------------------------
 
-    declared_count: int | None = None
-    try:
-        declared_count = int(lines[0])
-        data_lines = lines[1:]
-    except ValueError:
-        data_lines = lines
+if __name__ == "__main__":
 
-    points = [_parse_point(line) for line in data_lines]
-
-    if declared_count is not None and declared_count != len(points):
-        raise ValueError(
-            f"declared {declared_count} points but found {len(points)} point rows"
-        )
-
-    return points
-
-
-def _parse_point(line: str):
-    pieces = line.split()
-    label = pieces[0]
-    coords = tuple(float(x) for x in pieces[1:])
-    return label, coords
-
-
-def _euclidean_distance(a: Point, b: Point) -> float:
-    total = 0.0
-    for idx in range(len(a)):
-        diff = a[idx] - b[idx]
-        total += diff * diff
-    return math.sqrt(total)
-
-
-def _format_point(point) -> str:
-    return " ".join(f"{value:g}" for value in point)
-
-
-
-
-def main():
-    # 1. parse arguments
-    if len(sys.argv) != 3:
-        print("Usage: python cluster.py <input_file> <threshold>")
+    if len(sys.argv) < 3:
+        print("Usage: python qt_clustering.py <inputfile> <threshold>")
+        print("Threshold can be absolute (e.g. 0.5) or percentage (e.g. 30%)")
         sys.exit(1)
 
     input_file = sys.argv[1]
     threshold_arg = sys.argv[2]
 
-    # 2. load data
-    data = load_points(input_file)
-    
-    labels = [label for label, _ in data]
-    points = [coords for _, coords in data]
+    if not os.path.exists(input_file):
+        print("File not found:", input_file)
+        sys.exit(1)
 
-    # 3. compute distance matrix
-    temp_clusterer = QTClusterer(0)
-    distances = temp_clusterer._distance_matrix(points)
+    points, labels = load_points_from_file(input_file)
 
-    # 4. process threshold
+    # Threshold parsing
     if threshold_arg.endswith("%"):
-        percent = float(threshold_arg[:-1]) / 100
-
-        max_dist = 0.0
-        for i in range(len(distances)):
-            for j in range(len(distances)):
-                if distances[i][j] > max_dist:
-                    max_dist = distances[i][j]
-
-        threshold = percent * max_dist
+        percentage = float(threshold_arg[:-1]) / 100.0
+        max_dist = compute_max_distance(points)
+        threshold = max_dist * percentage
     else:
         threshold = float(threshold_arg)
 
-    # 5. clustering
-    clusterer = QTClusterer(threshold)
-    clusters = clusterer.fit(points)
+    # Run clustering
+    qt = QTClustering(points, threshold)
+    clusters = qt.fit()
 
-    # 6. output
-    for idx, cluster in enumerate(clusters, start=1):
-        print(f"Cluster-{idx}")
-        for point_idx in cluster:
-            label = labels[point_idx]
-            point = points[point_idx]
-            print(f"{label} {_format_point(point)}")
+    # Output
+    print("Threshold:", threshold)
+    print("Total clusters:", len(clusters))
 
-
-if __name__ == "__main__":
-    main()
+    for i, cluster in enumerate(clusters):
+        print(f"Cluster {i+1} size: {len(cluster)}")
+        print("Members:", [labels[idx] for idx in cluster])
