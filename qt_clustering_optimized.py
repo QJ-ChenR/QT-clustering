@@ -1,7 +1,7 @@
-"""QT (Quality Threshold) clustering for multi-dimensional data points."""
+"""Optimized QT (Quality Threshold) clustering for multi-dimensional data points."""
 
-import sys
 import math
+import sys
 
 
 Point = tuple[float, ...]
@@ -21,15 +21,22 @@ class QTClusterer:
 
         self._validate_dimensions(points)
         distances = self._distance_matrix(points)
-        unassigned = set(range(len(points)))
+        neighbors = self._build_neighbor_lists(distances, self.threshold)
+
+        n_points = len(points)
+        active = [True] * n_points
+        active_count = n_points
         clusters: list[list[int]] = []
 
-        while unassigned:
+        while active_count > 0:
             best_cluster: list[int] | None = None
             best_diameter = math.inf
 
-            for seed in sorted(unassigned):
-                candidate, diameter = self._build_cluster(seed, unassigned, distances)
+            for seed in range(n_points):
+                if not active[seed]:
+                    continue
+
+                candidate, diameter = self._build_cluster(seed, active, distances, neighbors)
                 if best_cluster is None:
                     best_cluster = candidate
                     best_diameter = diameter
@@ -48,7 +55,11 @@ class QTClusterer:
 
             assert best_cluster is not None
             clusters.append(best_cluster)
-            unassigned.difference_update(best_cluster)
+
+            for idx in best_cluster:
+                if active[idx]:
+                    active[idx] = False
+                    active_count -= 1
 
         return clusters
 
@@ -67,45 +78,53 @@ class QTClusterer:
     def _build_cluster(
         self,
         seed: int,
-        available: set[int],
+        active: list[bool],
         distances: list[list[float]],
+        neighbors: list[list[int]],
     ) -> tuple[list[int], float]:
         cluster = [seed]
-        cluster_set = {seed}
-        diameter = 0.0
+        candidates: list[int] = []
 
-        while True:
-            best_next = None
-            best_new_diameter = math.inf
+        for neighbor in neighbors[seed]:
+            if active[neighbor] and neighbor != seed:
+                candidates.append(neighbor)
 
-            for idx in sorted(available):
-                if idx in cluster_set:
-                    continue
+        diameter_cache: dict[int, float] = {}
+        for candidate in candidates:
+            diameter_cache[candidate] = distances[seed][candidate]
 
-                new_diameter = diameter
-                for existing in cluster:
-                    new_diameter = max(new_diameter, distances[idx][existing])
-                    if new_diameter > self.threshold:
-                        break
+        cluster_diameter = 0.0
 
-                if new_diameter > self.threshold:
-                    continue
+        while candidates:
+            best_candidate: int | None = None
+            smallest_diameter = math.inf
 
-                if best_next is None or new_diameter < best_new_diameter or (
-                    math.isclose(new_diameter, best_new_diameter) and idx < best_next
+            for candidate in candidates:
+                candidate_diameter = diameter_cache[candidate]
+                if (
+                    candidate_diameter < smallest_diameter
+                    or (
+                        math.isclose(candidate_diameter, smallest_diameter)
+                        and (best_candidate is None or candidate < best_candidate)
+                    )
                 ):
-                    best_next = idx
-                    best_new_diameter = new_diameter
+                    smallest_diameter = candidate_diameter
+                    best_candidate = candidate
 
-            if best_next is None:
+            if best_candidate is None or smallest_diameter > self.threshold:
                 break
 
-            cluster.append(best_next)
-            cluster_set.add(best_next)
-            diameter = best_new_diameter
+            cluster.append(best_candidate)
+            cluster_diameter = smallest_diameter
+            candidates.remove(best_candidate)
+
+            for candidate in candidates:
+                updated = distances[best_candidate][candidate]
+                if updated > diameter_cache[candidate]:
+                    diameter_cache[candidate] = updated
 
         cluster.sort()
-        return cluster, diameter
+        return cluster, cluster_diameter
 
     @staticmethod
     def _distance_matrix(points: list[Point]) -> list[list[float]]:
@@ -117,6 +136,21 @@ class QTClusterer:
                 distances[i][j] = dist
                 distances[j][i] = dist
         return distances
+
+    @staticmethod
+    def _build_neighbor_lists(
+        distances: list[list[float]],
+        threshold: float,
+    ) -> list[list[int]]:
+        size = len(distances)
+        neighbors: list[list[int]] = []
+        for i in range(size):
+            row_neighbors: list[int] = []
+            for j in range(size):
+                if i != j and distances[i][j] <= threshold:
+                    row_neighbors.append(j)
+            neighbors.append(row_neighbors)
+        return neighbors
 
     @staticmethod
     def _validate_dimensions(points: list[Point]) -> None:
@@ -174,10 +208,7 @@ def _format_point(point) -> str:
     return " ".join(f"{value:g}" for value in point)
 
 
-
-
 def main():
-    # 1. parse arguments
     if len(sys.argv) != 3:
         print("Usage: python cluster.py <input_file> <threshold>")
         sys.exit(1)
@@ -185,35 +216,27 @@ def main():
     input_file = sys.argv[1]
     threshold_arg = sys.argv[2]
 
-    # 2. load data
     data = load_points(input_file)
-    
     labels = [label for label, _ in data]
     points = [coords for _, coords in data]
 
-    # 3. compute distance matrix
     temp_clusterer = QTClusterer(0)
     distances = temp_clusterer._distance_matrix(points)
 
-    # 4. process threshold
     if threshold_arg.endswith("%"):
         percent = float(threshold_arg[:-1]) / 100
-
         max_dist = 0.0
         for i in range(len(distances)):
             for j in range(len(distances)):
                 if distances[i][j] > max_dist:
                     max_dist = distances[i][j]
-
         threshold = percent * max_dist
     else:
         threshold = float(threshold_arg)
 
-    # 5. clustering
     clusterer = QTClusterer(threshold)
     clusters = clusterer.fit(points)
 
-    # 6. output
     for idx, cluster in enumerate(clusters, start=1):
         print(f"Cluster-{idx}")
         for point_idx in cluster:
