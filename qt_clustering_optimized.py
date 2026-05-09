@@ -1,4 +1,11 @@
-"""Optimized QT (Quality Threshold) clustering for multi-dimensional data points."""
+"""
+Optimized QT (Quality Threshold) clustering for multi-dimensional data points.
+Key optimizations:
+- Pairwise distance matrix precomputation
+- Neighbor list pruning
+- Diameter cache for incremental expansion
+- Deterministic tie-breaking
+"""
 
 import math
 import sys
@@ -11,7 +18,7 @@ class QTClusterer:
     """Deterministic QT clustering with a fixed maximum cluster diameter."""
 
     def __init__(self, threshold: float) -> None:
-        # check threshold is non-negative
+        # validate threshold parameter
         self.threshold = threshold
         if threshold < 0:
             raise ValueError("threshold must be non-negative")
@@ -43,6 +50,9 @@ class QTClusterer:
                     best_diameter = diameter
                     continue
 
+                # Select globally best cluster
+                # prioritize larger size, then smaller diameter
+                # then lexicographic determinism
                 if len(candidate) > len(best_cluster):
                     best_cluster = candidate
                     best_diameter = diameter
@@ -82,7 +92,8 @@ class QTClusterer:
         active: list[bool],
         distances: list[list[float]],
         neighbors: list[list[int]],
-    ) -> tuple[list[int], float]:
+        ) -> tuple[list[int], float]:
+
         cluster = [seed]
         candidates: list[int] = []
 
@@ -127,6 +138,8 @@ class QTClusterer:
 
             for candidate in candidates:
                 updated = distances[best_candidate][candidate]
+                # Incrementally update candidate diameter using only the newly added point
+                # avoiding full recomputation of cluster diameter
                 if updated > diameter_cache[candidate]:
                     diameter_cache[candidate] = updated
 
@@ -134,7 +147,9 @@ class QTClusterer:
         return cluster, cluster_diameter
 
     @staticmethod
-    def _distance_matrix(points: list[Point]) -> list[list[float]]:
+    def _distance_matrix(points: list[Point]) -> list[list[float]]: 
+        # Precompute symmetric pairwise distance matrix once
+        # to avoid redundant distance calculations during clustering
         size = len(points)
         distances = [[0.0] * size for _ in range(size)]
         for i in range(size):
@@ -149,7 +164,8 @@ class QTClusterer:
         distances: list[list[float]],
         threshold: float,
     ) -> list[list[int]]:
-    # Neighbor lists restrict search space to threshold-compatible points only
+    
+        # Neighbor lists restrict search space to threshold-compatible points only
         size = len(distances)
         neighbors: list[list[int]] = []
         for i in range(size):
@@ -162,6 +178,7 @@ class QTClusterer:
 
     @staticmethod
     def _validate_dimensions(points: list[Point]) -> None:
+        # ensure all points have the same number of dimensions and at least one dimension
         dims = len(points[0])
         if dims == 0:
             raise ValueError("points must have at least one dimension")
@@ -198,6 +215,7 @@ def load_points(path: str) -> list[tuple[str, Point]]:
 
 
 def _parse_point(line: str):
+    # parse a line into a label and a tuple of coordinates
     pieces = line.split()
     label = pieces[0]
     coords = tuple(float(x) for x in pieces[1:])
