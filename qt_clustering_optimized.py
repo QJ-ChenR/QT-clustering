@@ -11,6 +11,7 @@ class QTClusterer:
     """Deterministic QT clustering with a fixed maximum cluster diameter."""
 
     def __init__(self, threshold: float) -> None:
+        # check threshold is non-negative
         self.threshold = threshold
         if threshold < 0:
             raise ValueError("threshold must be non-negative")
@@ -19,9 +20,9 @@ class QTClusterer:
         if not points:
             return []
 
-        self._validate_dimensions(points)
-        distances = self._distance_matrix(points)
-        neighbors = self._build_neighbor_lists(distances, self.threshold)
+        self._validate_dimensions(points) # check all points have the same number of dimensions
+        distances = self._distance_matrix(points) # precompute distance matrix for efficiency
+        neighbors = self._build_neighbor_lists(distances, self.threshold) # precompute neighbor lists for efficiency
 
         n_points = len(points)
         active = [True] * n_points
@@ -86,16 +87,22 @@ class QTClusterer:
         candidates: list[int] = []
 
         for neighbor in neighbors[seed]:
+            # only consider active neighbors that are not the seed itself
+            # any point beyond threshold from the seed can never belong to this cluster
             if active[neighbor] and neighbor != seed:
                 candidates.append(neighbor)
 
-        diameter_cache: dict[int, float] = {}
+        diameter_cache: dict[int, float] = {} 
+        # diameter_cache[candidate] stores the current maximum distance
+        # this reduces the number of distance calculations needed to evaluate candidates
         for candidate in candidates:
             diameter_cache[candidate] = distances[seed][candidate]
 
         cluster_diameter = 0.0
 
         while candidates:
+            # greedily choose the candidate that minimally increases cluster diameter
+            # ties are broken deterministically by smaller point index
             best_candidate: int | None = None
             smallest_diameter = math.inf
 
@@ -142,6 +149,7 @@ class QTClusterer:
         distances: list[list[float]],
         threshold: float,
     ) -> list[list[int]]:
+    # Neighbor lists restrict search space to threshold-compatible points only
         size = len(distances)
         neighbors: list[list[int]] = []
         for i in range(size):
@@ -213,9 +221,11 @@ def main():
         print("Usage: python cluster.py <input_file> <threshold>")
         sys.exit(1)
 
+    # threshold can be a float or a percentage string like "20%"
     input_file = sys.argv[1]
     threshold_arg = sys.argv[2]
 
+    # load points and separate labels from coordinates
     data = load_points(input_file)
     labels = [label for label, _ in data]
     points = [coords for _, coords in data]
@@ -223,7 +233,7 @@ def main():
     temp_clusterer = QTClusterer(0)
     distances = temp_clusterer._distance_matrix(points)
 
-    if threshold_arg.endswith("%"):
+    if threshold_arg.endswith("%"): # interpret percentage threshold relative to maximum distance in the dataset
         percent = float(threshold_arg[:-1]) / 100
         max_dist = 0.0
         for i in range(len(distances)):
@@ -234,9 +244,10 @@ def main():
     else:
         threshold = float(threshold_arg)
 
-    clusterer = QTClusterer(threshold)
-    clusters = clusterer.fit(points)
+    clusterer = QTClusterer(threshold) # initialize clusterer with the specified threshold
+    clusters = clusterer.fit(points) # compute clusters based on the input points and threshold
 
+    # print clusters with labels and coordinates
     for idx, cluster in enumerate(clusters, start=1):
         print(f"Cluster-{idx}")
         for point_idx in cluster:
