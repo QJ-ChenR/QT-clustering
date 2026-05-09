@@ -221,7 +221,7 @@ def load_points(path: str) -> list[tuple[str, Point]]:
     return points
 
 
-def _parse_point(line: str):
+def _parse_point(line: str)-> tuple[str, Point]:
     # parse a line into a label and a tuple of coordinates
     pieces = line.split()
 
@@ -278,7 +278,10 @@ def main():
                     max_dist = distances[i][j]
         threshold = percent * max_dist
     else:
-        threshold = float(threshold_arg)
+        try:
+            threshold = float(threshold_arg)
+        except ValueError:
+            raise ValueError(f"invalid threshold: '{threshold_arg}' - must be a number or a percentage")
 
     clusterer = QTClusterer(threshold) # initialize clusterer with the specified threshold
     clusters = clusterer.fit(points) # compute clusters based on the input points and threshold
