@@ -226,7 +226,7 @@ def _parse_point(line: str):
         raise ValueError(f"invalid point line: '{line}' - must contain a label and at least one coordinate")
 
     label = pieces[0]
-    
+
     try:
         coords = tuple(float(x) for x in pieces[1:])
         return label, coords
@@ -259,6 +259,9 @@ def main():
     data = load_points(input_file)
     labels = [label for label, _ in data]
     points = [coords for _, coords in data]
+
+    if not data: # handle case of empty input file or no valid points
+        raise ValueError("input file contains no valid points")
 
     temp_clusterer = QTClusterer(0)
     distances = temp_clusterer._distance_matrix(points)
