@@ -191,8 +191,12 @@ class QTClusterer:
 
 
 def load_points(path: str) -> list[tuple[str, Point]]:
-    with open(path, "r", encoding="utf-8") as fp:
-        lines = [line.strip() for line in fp.readlines()]
+    try:
+        with open(path, "r", encoding="utf-8") as fp: # error handling for file not found
+            lines = [line.strip() for line in fp.readlines()]
+    except FileNotFoundError:
+        raise FileNotFoundError(f"input file not found: {path}")
+    
     lines = [line for line in lines if line]
     if not lines:
         return []
@@ -217,9 +221,17 @@ def load_points(path: str) -> list[tuple[str, Point]]:
 def _parse_point(line: str):
     # parse a line into a label and a tuple of coordinates
     pieces = line.split()
+
+    if len(pieces) < 2:
+        raise ValueError(f"invalid point line: '{line}' - must contain a label and at least one coordinate")
+
     label = pieces[0]
-    coords = tuple(float(x) for x in pieces[1:])
-    return label, coords
+    
+    try:
+        coords = tuple(float(x) for x in pieces[1:])
+        return label, coords
+    except ValueError:
+        raise ValueError(f"invalid point line: '{line}' - coordinates must be numeric")
 
 
 def _euclidean_distance(a: Point, b: Point) -> float:
