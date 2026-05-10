@@ -24,7 +24,7 @@ class QTClusterer:
             raise ValueError("threshold must be non-negative")
 
     def fit(self, points: list[Point]) -> list[list[int]]:
-        # cluster points and return clusters as lists of point indices
+        # take cluster points and return clusters as lists of point indices
         if not points:
             return []
 

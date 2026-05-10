@@ -16,6 +16,7 @@ class QTClusterer:
             raise ValueError("threshold must be non-negative")
 
     def fit(self, points: list[Point]) -> list[list[int]]:
+        # take cluster points and return clusters as lists of point indices
         if not points:
             return []
 
@@ -53,6 +54,7 @@ class QTClusterer:
         return clusters
 
     def fit_predict(self, points: list[Point]) -> list[int]:
+        # fit points and return a list of cluster labels corresponding to the input points
         clusters = self.fit(points)
         labels = [-1] * len(points)
         for cluster_id, cluster in enumerate(clusters):
@@ -70,6 +72,8 @@ class QTClusterer:
         available: set[int],
         distances: list[list[float]],
     ) -> tuple[list[int], float]:
+
+    # Build a cluster starting from the seed point, adding points that do not exceed the diameter threshold.
         cluster = [seed]
         cluster_set = {seed}
         diameter = 0.0
@@ -156,6 +160,7 @@ def load_points(path: str) -> list[tuple[str, Point]]:
 
 
 def _parse_point(line: str):
+    # parse a line of the format "label x1 x2 ... xd" into a tuple of (label, (x1, x2, ..., xd))
     pieces = line.split()
     label = pieces[0]
     coords = tuple(float(x) for x in pieces[1:])
