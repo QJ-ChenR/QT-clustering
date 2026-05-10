@@ -1,4 +1,11 @@
-"""Optimized QT (Quality Threshold) clustering for multi-dimensional data points."""
+"""
+Optimized QT (Quality Threshold) clustering for multi-dimensional data points.
+Key optimizations:
+- Pairwise distance matrix precomputation
+- Neighbor list pruning
+- Diameter cache for incremental expansion
+- Deterministic tie-breaking
+"""
 
 import math
 import sys
@@ -11,17 +18,19 @@ class QTClusterer:
     """Deterministic QT clustering with a fixed maximum cluster diameter."""
 
     def __init__(self, threshold: float) -> None:
+        # validate threshold parameter
         self.threshold = threshold
         if threshold < 0:
             raise ValueError("threshold must be non-negative")
 
     def fit(self, points: list[Point]) -> list[list[int]]:
+        # take cluster points and return clusters as lists of point indices
         if not points:
             return []
 
-        self._validate_dimensions(points)
-        distances = self._distance_matrix(points)
-        neighbors = self._build_neighbor_lists(distances, self.threshold)
+        self._validate_dimensions(points) # check all points have the same number of dimensions
+        distances = self._distance_matrix(points) # precompute distance matrix for efficiency
+        neighbors = self._build_neighbor_lists(distances, self.threshold) # precompute neighbor lists for efficiency
 
         n_points = len(points)
         active = [True] * n_points
@@ -42,6 +51,9 @@ class QTClusterer:
                     best_diameter = diameter
                     continue
 
+                # Select globally best cluster
+                # prioritize larger size, then smaller diameter
+                # then lexicographic determinism
                 if len(candidate) > len(best_cluster):
                     best_cluster = candidate
                     best_diameter = diameter
@@ -64,6 +76,7 @@ class QTClusterer:
         return clusters
 
     def fit_predict(self, points: list[Point]) -> list[int]:
+        # return cluster labels for each point
         clusters = self.fit(points)
         labels = [-1] * len(points)
         for cluster_id, cluster in enumerate(clusters):
@@ -72,6 +85,7 @@ class QTClusterer:
         return labels
 
     def cluster_points(self, points: list[Point]) -> list[list[Point]]:
+        # return clustered points grouped by cluster
         clusters = self.fit(points)
         return [[points[idx] for idx in cluster] for cluster in clusters]
 
@@ -81,21 +95,28 @@ class QTClusterer:
         active: list[bool],
         distances: list[list[float]],
         neighbors: list[list[int]],
-    ) -> tuple[list[int], float]:
+        ) -> tuple[list[int], float]:
+
         cluster = [seed]
         candidates: list[int] = []
 
         for neighbor in neighbors[seed]:
+            # only consider active neighbors that are not the seed itself
+            # any point beyond threshold from the seed can never belong to this cluster
             if active[neighbor] and neighbor != seed:
                 candidates.append(neighbor)
 
-        diameter_cache: dict[int, float] = {}
+        diameter_cache: dict[int, float] = {} 
+        # diameter_cache[candidate] stores the current maximum distance
+        # this reduces the number of distance calculations needed to evaluate candidates
         for candidate in candidates:
             diameter_cache[candidate] = distances[seed][candidate]
 
         cluster_diameter = 0.0
 
         while candidates:
+            # greedily choose the candidate that minimally increases cluster diameter
+            # ties are broken deterministically by smaller point index
             best_candidate: int | None = None
             smallest_diameter = math.inf
 
@@ -120,6 +141,8 @@ class QTClusterer:
 
             for candidate in candidates:
                 updated = distances[best_candidate][candidate]
+                # Incrementally update candidate diameter using only the newly added point
+                # avoiding full recomputation of cluster diameter
                 if updated > diameter_cache[candidate]:
                     diameter_cache[candidate] = updated
 
@@ -127,7 +150,9 @@ class QTClusterer:
         return cluster, cluster_diameter
 
     @staticmethod
-    def _distance_matrix(points: list[Point]) -> list[list[float]]:
+    def _distance_matrix(points: list[Point]) -> list[list[float]]: 
+        # Precompute symmetric pairwise distance matrix once
+        # to avoid redundant distance calculations during clustering
         size = len(points)
         distances = [[0.0] * size for _ in range(size)]
         for i in range(size):
@@ -142,6 +167,8 @@ class QTClusterer:
         distances: list[list[float]],
         threshold: float,
     ) -> list[list[int]]:
+    
+        # Neighbor lists restrict search space to threshold-compatible points only
         size = len(distances)
         neighbors: list[list[int]] = []
         for i in range(size):
@@ -154,6 +181,7 @@ class QTClusterer:
 
     @staticmethod
     def _validate_dimensions(points: list[Point]) -> None:
+        # ensure all points have the same number of dimensions and at least one dimension
         dims = len(points[0])
         if dims == 0:
             raise ValueError("points must have at least one dimension")
@@ -166,8 +194,12 @@ class QTClusterer:
 
 
 def load_points(path: str) -> list[tuple[str, Point]]:
-    with open(path, "r", encoding="utf-8") as fp:
-        lines = [line.strip() for line in fp.readlines()]
+    try:
+        with open(path, "r", encoding="utf-8") as fp: # error handling for file not found
+            lines = [line.strip() for line in fp.readlines()]
+    except FileNotFoundError:
+        raise FileNotFoundError(f"input file not found: {path}")
+    
     lines = [line for line in lines if line]
     if not lines:
         return []
@@ -189,11 +221,20 @@ def load_points(path: str) -> list[tuple[str, Point]]:
     return points
 
 
-def _parse_point(line: str):
+def _parse_point(line: str)-> tuple[str, Point]:
+    # parse a line into a label and a tuple of coordinates
     pieces = line.split()
+
+    if len(pieces) < 2:
+        raise ValueError(f"invalid point line: '{line}' - must contain a label and at least one coordinate")
+
     label = pieces[0]
-    coords = tuple(float(x) for x in pieces[1:])
-    return label, coords
+
+    try:
+        coords = tuple(float(x) for x in pieces[1:])
+        return label, coords
+    except ValueError:
+        raise ValueError(f"invalid point line: '{line}' - coordinates must be numeric")
 
 
 def _euclidean_distance(a: Point, b: Point) -> float:
@@ -213,17 +254,22 @@ def main():
         print("Usage: python cluster.py <input_file> <threshold>")
         sys.exit(1)
 
+    # threshold can be a float or a percentage string like "20%"
     input_file = sys.argv[1]
     threshold_arg = sys.argv[2]
 
+    # load points and separate labels from coordinates
     data = load_points(input_file)
     labels = [label for label, _ in data]
     points = [coords for _, coords in data]
 
+    if not data: # handle case of empty input file or no valid points
+        raise ValueError("input file contains no valid points")
+
     temp_clusterer = QTClusterer(0)
     distances = temp_clusterer._distance_matrix(points)
 
-    if threshold_arg.endswith("%"):
+    if threshold_arg.endswith("%"): # interpret percentage threshold relative to maximum distance in the dataset
         percent = float(threshold_arg[:-1]) / 100
         max_dist = 0.0
         for i in range(len(distances)):
@@ -232,11 +278,15 @@ def main():
                     max_dist = distances[i][j]
         threshold = percent * max_dist
     else:
-        threshold = float(threshold_arg)
+        try:
+            threshold = float(threshold_arg)
+        except ValueError:
+            raise ValueError(f"invalid threshold: '{threshold_arg}' - must be a number or a percentage")
 
-    clusterer = QTClusterer(threshold)
-    clusters = clusterer.fit(points)
+    clusterer = QTClusterer(threshold) # initialize clusterer with the specified threshold
+    clusters = clusterer.fit(points) # compute clusters based on the input points and threshold
 
+    # print clusters with labels and coordinates
     for idx, cluster in enumerate(clusters, start=1):
         print(f"Cluster-{idx}")
         for point_idx in cluster:
